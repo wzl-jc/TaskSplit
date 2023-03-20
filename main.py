@@ -10,7 +10,6 @@ import numpy as np
 
 if __name__ == '__main__':
     # args = parse_args()
-
     q_appinfo = mp.Queue(maxsize=1)  # 应用层向任务切分层传递应用信息的队列
     q_frame_app_split = mp.Queue(maxsize=1)  # 应用层向任务切分层传递视频帧的队列
     q_frame_split_app = mp.Queue(maxsize=1)  # 应用层接收任务切分层汇总结果的队列
@@ -37,8 +36,8 @@ if __name__ == '__main__':
         # 检测到的目标坐标列表，列表每一个元素都是一个元组，元组第一个元素为左上角坐标，第二个元素为右下角坐标
         res_obj_coord_array = np.array([[0, 0, 200, 200],
                                         [100, 100, 210, 210]])
-        res_dict = {'task_type': task['task_type'],  # 任务类型,D:Detection,T:Tracking
-                    'app_type': task['app_type'],  # 应用类型，用于决定使用哪一场景中的模型.与app_info['app_type']保持一致
+        res_dict = {  # 'task_type': task['task_type'],  # 任务类型,D:Detection,T:Tracking
+                    #  'app_type': task['app_type'],  # 应用类型，用于决定使用哪一场景中的模型.与app_info['app_type']保持一致
                     'model_type': task['model_type'],
                     'frame': task['frame'],
                     'task_split_id': task['task_split_id'],  # 大任务id
@@ -46,7 +45,7 @@ if __name__ == '__main__':
                     'obj_coord_array': res_obj_coord_array  # 检测到的目标坐标数组
                     }
         try:
-            q_task_res.put(res_dict)  # 阻塞式放置任务
+            q_task_res.put(res_dict)  # 阻塞式放置任务结果
             # print("Put task result: {}".format(res_dict['task_split_id']))
             continue
         except:

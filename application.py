@@ -4,6 +4,7 @@
 from threading import Thread
 import cv2
 import time
+from TaskClassDict import task_class_dict as td
 
 
 def video_app(q_appinfo, q_frame_app_split, q_frame_split_app):
@@ -25,15 +26,26 @@ def app2split(q_appinfo, q_frame):
     '''
     time.sleep(3)
     # 第一部分：获取应用层信息并传递给任务切分层
+    # app_info = {
+    #     'app_name': 'face-recognition',   # 应用名
+    #     'app_type': 0,                    # 应用类型,例如人脸检测、行人检测等,用于决定使用哪一场景中的模型.0:人脸检测
+    #     'app_mode': 0,                    # 应用运行模式, 0:Detection；1:Detection+Tracking
+    #     'Detection-mode': 0,              # 应用进行Detection时使用的模型是单阶段还是两阶段,0:单阶段；1:两阶段
+    #     'Accuracy': 0.6,                 # 用户对精度的要求
+    #     'Latency': 0.5,                   # 用户对时延的要求(秒)
+    #     'priority': 0                     # 0为时延优先，1为精度优先
+    # }
     app_info = {
-        'app_name': 'face-recognition',   # 应用名
-        'app_type': 0,                    # 应用类型,例如人脸检测、行人检测等,用于决定使用哪一场景中的模型.0:人脸检测
-        'app_mode': 0,                    # 应用运行模式, 0:Detection；1:Detection+Tracking
-        'Detection-mode': 0,              # 应用进行Detection时使用的模型是单阶段还是两阶段,0:单阶段；1:两阶段
+        'app_name': 'face-recognition',  # 应用名
+        'task_list': ['FaceDetection', 'FacePoseEstimation'],  # 任务包含的子任务
+        'task_dag': {
+            td['FacePoseEstimation']: [td['FaceDetection']]   # 子任务之间的依赖关系
+        },
         'Accuracy': 0.6,                 # 用户对精度的要求
-        'Latency': 0.5,                   # 用户对时延的要求(秒)
-        'priority': 0                     # 0为时延优先，1为精度优先
+        'Latency': 0.5,                  # 用户对时延的要求(秒)
+        'priority': 0                    # 0为时延优先，1为精度优先
     }
+
     while True:  # 向q_appinfo中放置应用信息，放置成功则跳出死循环，否则继续尝试
         try:
             q_appinfo.put_nowait(app_info)
@@ -54,6 +66,8 @@ def app2split(q_appinfo, q_frame):
     fps = int(video_cap.get(cv2.CAP_PROP_FPS))
     print('Frame width: {}, height: {}, fps: {}'.format(img_width, img_height, fps))
     ret, frame = video_cap.read()
+    print(type(frame))
+    print(frame.shape)
     # cv2.imwrite("0.jpg", frame)
     n_frame = 0
     while ret:

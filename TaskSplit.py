@@ -10,6 +10,7 @@ from threading import Thread
 import queue
 import math
 from TaskSummarizer import task_summarizer
+from TaskClassDict import task_class_dict as td
 
 
 def task_split_layer(q_appinfo, q_frame_app_split, q_task, q_task_res, q_frame_split_app):
@@ -61,22 +62,32 @@ def task_split(q_appinfo, q_app_frame, q_task, object_size, object_size_lock, ta
             except queue.Empty:
                 print("In application.py,exception at q_appinfo.put_nowait, try again!")
                 continue
-    # print(app_info)
+    print(app_info)
 
     # 第二部分：从应用层接收视频帧并生成任务
     # 冷启动
     cold_boot_num = 5  # 冷启动帧数
     task_split_id = {'task_split_id': 0}  # 标记切分后的任务id，第一个任务的id为1
-    cold_boot(q_app_frame, q_task, task_split_id, app_info['app_type'], cold_boot_num, task_recorder,
+    temp_dag = {
+        'task_list': app_info['task_list'],
+        'task_dag': app_info['task_dag']
+    }
+    cold_boot(q_app_frame, q_task, task_split_id, temp_dag, cold_boot_num, task_recorder,
               task_recorder_lock)
     # print(task_split_id)
 
-    if app_info['app_mode'] == 0:  # 纯detection任务
-        detection_split(app_info, object_size, object_size_lock, q_app_frame, q_task, task_split_id, task_recorder,
+    dag_root = ''
+    for task_name in app_info['task_list']:
+        if td[task_name] not in app_info['task_dag']:
+            dag_root = task_name
+            break
+
+    if td[dag_root] == 0 or td[dag_root] == 2:  # 纯detection任务
+        detection_split(app_info, dag_root, object_size, object_size_lock, q_app_frame, q_task, task_split_id, task_recorder,
                         task_recorder_lock)
 
 
-def cold_boot(q_app_frame, q_task, task_split_id, app_type, cold_boot_num, task_recorder, task_recorder_lock):
+def cold_boot(q_app_frame, q_task, task_split_id, app_dag, cold_boot_num, task_recorder, task_recorder_lock):
     '''
     冷启动阶段的函数
     Args:
@@ -85,7 +96,7 @@ def cold_boot(q_app_frame, q_task, task_split_id, app_type, cold_boot_num, task_
         q_app_frame: 接收视频帧的队列
         q_task: 传输任务的队列
         task_split_id: 切分后的任务id
-        app_type: 应用类型，人脸识别、行人识别等
+        app_dag: 任务执行的DAG图
         cold_boot_num: 冷启动帧数
     Returns:
         None
@@ -106,8 +117,10 @@ def cold_boot(q_app_frame, q_task, task_split_id, app_type, cold_boot_num, task_
             slice_coord = (0, 0)  # 切片的左上角坐标，用于汇总结果
             task_split_id['task_split_id'] += 1  # 更新切分任务id，第一个任务的id为1
             # 构造任务相关信息
-            task_dict['task_type'] = 'D'  # 任务类型,D:Detection,T:Tracking
-            task_dict['app_type'] = app_type  # 应用类型，用于决定使用哪一场景中的模型.与app_info['app_type']保持一致
+            # task_dict['task_type'] = 'D'  # 任务类型,D:Detection,T:Tracking
+            # task_dict['app_type'] = app_type  # 应用类型，用于决定使用哪一场景中的模型.与app_info['app_type']保持一致
+            task_dict['task_list'] = app_dag['task_list']   # 子任务列表
+            task_dict['task_dag'] = app_dag['task_dag']   # 子任务之间的依赖关系
             task_dict['model_type'] = 0  # 模型的种类,0:大模型，精度优先；1:小模型，延时优先
             task_dict['frame'] = frame  # Detection任务只有一帧
             task_dict['task_split_id'] = task_split_id['task_split_id']  # 任务id
@@ -116,7 +129,7 @@ def cold_boot(q_app_frame, q_task, task_split_id, app_type, cold_boot_num, task_
             # task_dict['slice_coord'] = slice_coord
             # 构造任务记录器相关信息
             task_recorder_dict = {
-                'task_type': 'D',
+                # 'task_type': 'D',
                 'frame': frame,
                 'task_split_id': task_split_id['task_split_id'],  # 任务id
                 'slice_coord_dict': {1: slice_coord},
@@ -148,7 +161,7 @@ def cold_boot(q_app_frame, q_task, task_split_id, app_type, cold_boot_num, task_
             break
 
 
-def detection_split(app_info, object_size, object_size_lock, q_app_frame, q_task, task_split_id, task_recorder,
+def detection_split(app_info, dag_root, object_size, object_size_lock, q_app_frame, q_task, task_split_id, task_recorder,
                     task_recorder_lock):
     '''
     detection任务的切分
@@ -156,6 +169,7 @@ def detection_split(app_info, object_size, object_size_lock, q_app_frame, q_task
         task_recorder_lock: 读写task_recorder用到的锁
         task_recorder: 任务记录变量，用于任务切分器向任务汇总器报告任务切分的信息，以及任务切分器汇总任务执行的结果
         app_info: 应用层信息，精度和时延的要求以及优先级
+        dag_root: DAG图中根任务的名字
         object_size: 目标大小
         object_size_lock: 目标大小锁
         q_app_frame: 获取视频帧的队列
@@ -187,8 +201,8 @@ def detection_split(app_info, object_size, object_size_lock, q_app_frame, q_task
                 continue
             # 若当前切分策略为空，则更新detection切分策略
             if cur_split_strategy is None:
-                nano_split_size = get_detection_split_size(app_info, 0, detection_model_profile)
-                server_split_size = get_detection_split_size(app_info, 1, detection_model_profile)
+                nano_split_size = get_detection_split_size(app_info, dag_root, 0, detection_model_profile)
+                server_split_size = get_detection_split_size(app_info, dag_root, 1, detection_model_profile)
                 frame_shape = [frame.shape[0], frame.shape[1]]
                 cur_split_strategy = get_detection_split_res(frame_shape, nano_split_size, nano_worker_num,
                                                              server_split_size, server_worker_num, obj_size)
@@ -205,8 +219,10 @@ def detection_split(app_info, object_size, object_size_lock, q_app_frame, q_task
                 w = cur_split_strategy['size_res'][i][1]
                 sub_frame = frame[x:x+h, y:y+w, :]
                 # print(sub_frame.shape)
-                task_dict = {'task_type': 'D',  # 任务类型,D:Detection,T:Tracking
-                             'app_type': app_info['app_type'],  # 应用类型，用于决定使用哪一场景中的模型.与app_info['app_type']保持一致
+                task_dict = {  # 'task_type': 'D',  # 任务类型,D:Detection,T:Tracking
+                             # 'app_type': app_info['app_type'],  # 应用类型，用于决定使用哪一场景中的模型.与app_info['app_type']保持一致
+                             'task_list': app_info['task_list'],  # 子任务列表
+                             'task_dag': app_info['task_dag'],  # 子任务之间的依赖关系
                              'model_type': cur_split_strategy['model_type_res'][i],
                              'frame': sub_frame,
                              'task_split_id': task_split_id['task_split_id'],   # 大任务id
@@ -217,7 +233,7 @@ def detection_split(app_info, object_size, object_size_lock, q_app_frame, q_task
 
             # 第一步：向任务汇总器传递新任务的信息
             task_recorder_dict = {
-                'task_type': 'D',
+                # 'task_type': 'D',
                 'frame': frame,
                 'task_split_id': task_split_id['task_split_id'],  # 任务id
                 'slice_coord_dict': slice_coord_dict,
@@ -251,11 +267,12 @@ def detection_split(app_info, object_size, object_size_lock, q_app_frame, q_task
             #     pass
 
 
-def get_detection_split_size(app_info, device_type, detection_model_profile):
+def get_detection_split_size(app_info, dag_root, device_type, detection_model_profile):
     '''
     根据用户对精度和时延的需求，确定在指定设备类型上进行detection切片的大小
     Args:
         app_info:应用层信息
+        dag_root:根任务的名称
         device_type:设备类型
         detection_model_profile:模型知识库
     Returns:
@@ -266,42 +283,44 @@ def get_detection_split_size(app_info, device_type, detection_model_profile):
     # 遍历整个知识库，尽可能选择最合适的切片大小
     for i in range(len(detection_model_profile)):
         # 模型类型与设备类型匹配
-        if detection_model_profile[i][0] == app_info['app_type'] and detection_model_profile[i][1] == device_type:
+        if detection_model_profile[i][0] == td[dag_root] and detection_model_profile[i][1] == device_type:
             # 时延优先
+            # print("In get_detection_split_size, dag_root:{0}, td[dag_root]:{1}".format(dag_root, td[dag_root]))
             if app_info['priority'] == 0:
                 # 寻找满足时延要求的最大的切片
                 for j in range(4):
-                    if detection_model_profile[i][4 + 2 * j + 1] <= app_info['Latency']:
+                    if detection_model_profile[i][3 + 3 * j + 2] <= app_info['Latency']:
                         split_size_res = {'model_size': detection_model_profile[i][2],
-                                          'split_size': detection_model_profile[i][4 + 2 * j]}
+                                          'split_size': detection_model_profile[i][3 + 3 * j]}
                         break
                 if split_size_res is not None:
                     break
             # 精度优先
             if app_info['priority'] == 1:
                 # 寻找满足精度要求的最小的切片
-                if detection_model_profile[i][3] >= app_info['Accuracy']:
-                    split_size_res = {'model_size': detection_model_profile[i][2],
-                                      'split_size': detection_model_profile[i][4 + 2 * 3]}
-                    break
+                for j in range(3, -1, -1):
+                    if detection_model_profile[i][3 + 3 * j + 1] >= app_info['Accuracy']:
+                        split_size_res = {'model_size': detection_model_profile[i][2],
+                                          'split_size': detection_model_profile[i][3 + 3 * j]}
+                        break
     # 若之前的遍历未能选出最合适的切片大小，则设置为默认大小
     if split_size_res is None:
         for i in range(len(detection_model_profile)):
             if app_info['priority'] == 0:
                 # 若时延优先之前未找到合适切片大小，则选择小模型并且切分为最小切片
-                if detection_model_profile[i][0] == app_info['app_type'] \
+                if detection_model_profile[i][0] == td[dag_root] \
                         and detection_model_profile[i][1] == device_type \
                         and detection_model_profile[i][2] == 0:
                     split_size_res = {'model_size': detection_model_profile[i][2],
-                                      'split_size': detection_model_profile[i][4 + 2 * 3]}
+                                      'split_size': detection_model_profile[i][3 + 3 * 3]}
                     break
             if app_info['priority'] == 1:
                 # 若精度优先之前未找到合适切片大小，则选择大模型并且切分为最小切片
-                if detection_model_profile[i][0] == app_info['app_type'] \
+                if detection_model_profile[i][0] == td[dag_root] \
                         and detection_model_profile[i][1] == device_type \
                         and detection_model_profile[i][2] == 1:
                     split_size_res = {'model_size': detection_model_profile[i][2],
-                                      'split_size': detection_model_profile[i][4 + 2 * 3]}
+                                      'split_size': detection_model_profile[i][3 + 3 * 3]}
                     break
     split_size_res['model_size'] = int(split_size_res['model_size'])
     split_size_res['split_size'] = int(split_size_res['split_size'])
