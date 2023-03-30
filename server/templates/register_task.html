@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>注册任务</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  </head>
+  <body>
+    <h1>注册任务</h1>
+    <form id="register-form" action="/register-task" method="POST">
+      <label for="task-name">任务名:</label>
+      <input type="text" id="task-name" name="task-name"><br><br>
+      <label for="task_dag">DAG图:</label>
+      <input type="file" id="task_dag" name="task_dag"><br><br>
+      <label for="video-path">视频流路径:</label>
+      <input type="text" id="video-path" name="video-path"><br><br>
+      <input type="submit" id="submit-btn" value="提交">
+    </form>
+    <div id="result"></div>
+    <script>
+      $(function() {
+        $('#register-form').submit(function(event) {
+          event.preventDefault(); 
+
+          var form_data = new FormData($('#register-form')[0]);
+          $.ajax({
+            url: 'http://127.0.0.1:5000/register-task',
+            type: 'POST',
+            data: form_data,
+            cache: false,
+            contentType: false,
+            processData: false,
+            success: function(response) {
+              $('#result').text(response);
+            },
+            error: function(xhr, status, error) {
+              $('#result').text('提交失败：' + error);
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -1,5 +1,5 @@
 '''
-此文件为整个系统的入口，用于启动系统中的各个进程
+此文件为边缘端整个系统的入口，用于启动系统中的各个进程
 '''
 import multiprocessing as mp
 from application import video_app
