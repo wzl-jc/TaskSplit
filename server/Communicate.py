@@ -5,6 +5,7 @@ from threading import Thread
 import multiprocessing as mp
 import socket
 from TaskClassDict import task_class_dict as td
+from TaskClassDict import task_class_dict_rev as td_rev
 
 
 def recvall(sock, n):
@@ -157,8 +158,9 @@ def send_app_info(sock, app_info):
     task_dag_len = len(task_dag)
     task_dag_len_bytes = task_dag_len.to_bytes(length=4, byteorder='big', signed=False)
     sock.sendall(task_dag_len_bytes)
-    for dag_key in task_dag.keys():
-        dag_key_bytes = dag_key.to_bytes(length=4, byteorder='big', signed=False)
+    for dag_key in task_dag.keys():  # dag_key是字符串
+        dag_key_1 = td[dag_key]
+        dag_key_bytes = dag_key_1.to_bytes(length=4, byteorder='big', signed=False)
         sock.sendall(dag_key_bytes)
 
         dag_val_list = task_dag[dag_key]
@@ -166,8 +168,9 @@ def send_app_info(sock, app_info):
         dag_val_list_len_bytes = dag_val_list_len.to_bytes(length=4, byteorder='big', signed=False)
         sock.sendall(dag_val_list_len_bytes)
 
-        for dag_val_i in dag_val_list:
-            dag_val_i_bytes = dag_val_i.to_bytes(length=4, byteorder='big', signed=False)
+        for dag_val_i in dag_val_list:  # dag_val_i是字符串
+            dag_val_i_1 = td[dag_val_i]
+            dag_val_i_bytes = dag_val_i_1.to_bytes(length=4, byteorder='big', signed=False)
             sock.sendall(dag_val_i_bytes)
 
     # 传输精度、时延、优先级
@@ -188,6 +191,19 @@ def send_app_info(sock, app_info):
     priority = app_info['priority']
     priority_bytes = priority.to_bytes(length=4, byteorder='big', signed=False)
     sock.sendall(priority_bytes)
+
+    # 传输各个阶段任务的代码路径
+    task_code_path = app_info['task_code_path']
+    for task_code_path_key in task_code_path.keys():
+        task_code_path_key_1 = td[task_code_path_key]
+        task_code_path_key_bytes = task_code_path_key_1.to_bytes(length=4, byteorder='big', signed=False)
+        sock.sendall(task_code_path_key_bytes)
+
+        code_path = task_code_path[task_code_path_key]
+        code_path_len = len(code_path)
+        code_path_len_bytes = code_path_len.to_bytes(length=4, byteorder='big', signed=False)
+        sock.sendall(code_path_len_bytes)
+        sock.sendall(code_path.encode('utf-8'))
 
 
 def communicate(q_app_info, ip, port):

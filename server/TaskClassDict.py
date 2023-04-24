@@ -7,3 +7,10 @@ task_class_dict = {
     'HelmetDetection': 2,   # 头盔检测
     'Tracking': 3   # 目标追踪
 }
+
+task_class_dict_rev = {
+    0: 'FaceDetection',    # 人脸检测
+    1: 'FacePoseEstimation',  # 人脸姿态估计
+    2: 'HelmetDetection',   # 头盔检测
+    3: 'Tracking'   # 目标追踪
+}

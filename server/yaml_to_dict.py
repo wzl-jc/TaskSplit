@@ -1,14 +1,13 @@
 import yaml
 from TaskClassDict import task_class_dict as td
 
-
 def yaml_to_dict(cont):
     task_dag_data = yaml.safe_load(cont)
     result_dict = {}
     for key, values in task_dag_data.items():
         result_key = td[key]
         result_dict[result_key] = []
-        if values is None:
+        if values == None:
             continue
         for value in values:
             result_value = td[value]

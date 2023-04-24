@@ -8,117 +8,81 @@ import socket
 from AppInfo import AppInfo
 from AppInfo import recvall
 from TaskGenerator import TaskGenerator
+import paramiko
+import datetime as dt
+import os
+import stat
+import sys
+
+
+# 递归遍历远程服务器指定目录下的所有文件
+def _get_all_files_in_remote_dir(sftp1, remote_dir):
+    all_files = list()
+    if remote_dir[-1] == '/':
+        remote_dir = remote_dir[0:-1]
+
+    files = sftp1.listdir_attr(remote_dir)
+    for file in files:
+        filename = remote_dir + '/' + file.filename
+
+        if stat.S_ISDIR(file.st_mode):  # 如果是文件夹的话递归处理
+            all_files.extend(_get_all_files_in_remote_dir(sftp1, filename))
+        else:
+            all_files.append(filename)
+
+    return all_files
+
+
+# 远程服务器上指定文件夹下载到本地文件夹
+def sftp_get_dir(sftp1, remote_dir, local_dir):
+    try:
+        all_files = _get_all_files_in_remote_dir(sftp1, remote_dir)
+
+        for file in all_files:
+
+            local_filename = file.replace(remote_dir, local_dir)
+            local_filepath = os.path.dirname(local_filename)
+
+            if not os.path.exists(local_filepath):
+                os.makedirs(local_filepath)
+
+            sftp1.get(file, local_filename)
+
+    except:
+        print('ssh get dir from master failed.')
+
+
+def callback(size, file_size):
+    print("Get file from server success!")
 
 
 if __name__ == '__main__':
-    ip = "127.0.0.1"
-    port = 5004
-    a = AppInfo(ip, port)
-    print(a.get_scheduler_task())
-    print(a.get_split_task())
-    b = TaskGenerator(a.get_split_task(), a.get_scheduler_task())
-    frame = np.ones((1080, 1920, 3))
-    print(b.get_task_list(frame))
-    # sender = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # sender.connect((ip, port))
-    # while True:
-    #     name_len = recvall(sender, 4)
-    #     name_len = int.from_bytes(name_len, byteorder='big', signed=False)
-    #     print(name_len)
-    #     name_str = recvall(sender, name_len)
-    #     name_str = name_str.decode('utf-8')
-    #     print(name_str)
-    #
-    #     flow_step_num = recvall(sender, 4)
-    #     flow_step_num = int.from_bytes(flow_step_num, byteorder='big', signed=False)
-    #     print(flow_step_num)
-    #     flow_list = []
-    #     for i in range(flow_step_num):
-    #         flow_i_name_len = recvall(sender, 4)
-    #         flow_i_name_len = int.from_bytes(flow_i_name_len, byteorder='big', signed=False)
-    #         flow_i_name = recvall(sender, flow_i_name_len)
-    #         flow_i_name = flow_i_name.decode('utf-8')
-    #         flow_list.append({"name": flow_i_name})
-    #
-    #     model_ctx_dict = {}
-    #     for i in range(flow_step_num):
-    #         step_i_name = flow_list[i]["name"]
-    #         step_i_dict = {}
-    #         step_i_dict_len = recvall(sender, 4)
-    #         step_i_dict_len = int.from_bytes(step_i_dict_len, byteorder='big', signed=False)
-    #         for j in range(step_i_dict_len):
-    #             key_len = recvall(sender, 4)
-    #             key_len = int.from_bytes(key_len, byteorder='big', signed=False)
-    #             key_str = recvall(sender, key_len)
-    #             key_str = key_str.decode('utf-8')
-    #
-    #             val_type = recvall(sender, 4)
-    #             val_type = int.from_bytes(val_type, byteorder='big', signed=False)
-    #             if val_type == 0:
-    #                 val_int = recvall(sender, 4)
-    #                 val_int = int.from_bytes(val_int, byteorder='big', signed=False)
-    #                 step_i_dict[key_str] = val_int
-    #             elif val_type == 1:
-    #                 float_str_len = recvall(sender, 4)
-    #                 float_str_len = int.from_bytes(float_str_len, byteorder='big', signed=False)
-    #                 float_str = recvall(sender, float_str_len)
-    #                 float_str = float_str.decode('utf-8')
-    #                 step_i_dict[key_str] = float(float_str)
-    #             elif val_type == 2:
-    #                 val_str_len = recvall(sender, 4)
-    #                 val_str_len = int.from_bytes(val_str_len, byteorder='big', signed=False)
-    #                 val_str = recvall(sender, val_str_len)
-    #                 val_str = val_str.decode('utf-8')
-    #                 step_i_dict[key_str] = val_str
-    #             elif val_type == 3:
-    #                 bool_int = recvall(sender, 4)
-    #                 bool_int = int.from_bytes(bool_int, byteorder='big', signed=False)
-    #                 bool_val = True if bool_int == 1 else False
-    #                 step_i_dict[key_str] = bool_val
-    #         model_ctx_dict[step_i_name] = step_i_dict
-    #
-    #     input_ctx_dict = {}
-    #     for i in range(flow_step_num + 1):
-    #         if i == flow_step_num:
-    #             flow_i_name = "R"
-    #         else:
-    #             flow_i_name = flow_list[i]["name"]
-    #         input_i_list_len = recvall(sender, 4)
-    #         input_i_list_len = int.from_bytes(input_i_list_len, byteorder='big', signed=False)
-    #         input_i_list = []
-    #         for j in range(input_i_list_len):
-    #             input_i_j_len = recvall(sender, 4)
-    #             input_i_j_len = int.from_bytes(input_i_j_len, byteorder='big', signed=False)
-    #             input_i_j = recvall(sender, input_i_j_len)
-    #             input_i_j = input_i_j.decode('utf-8')
-    #             input_i_list.append(input_i_j)
-    #         input_ctx_dict[flow_i_name] = input_i_list
-    #
-    #     output_ctx_dict = {}
-    #     for i in range(flow_step_num + 1):
-    #         if i == flow_step_num:
-    #             flow_i_name = "R"
-    #         else:
-    #             flow_i_name = flow_list[i]["name"]
-    #         output_i_list_len = recvall(sender, 4)
-    #         output_i_list_len = int.from_bytes(output_i_list_len, byteorder='big', signed=False)
-    #         output_i_list = []
-    #         for j in range(output_i_list_len):
-    #             output_i_j_len = recvall(sender, 4)
-    #             output_i_j_len = int.from_bytes(output_i_j_len, byteorder='big', signed=False)
-    #             output_i_j = recvall(sender, output_i_j_len)
-    #             output_i_j = output_i_j.decode('utf-8')
-    #             output_i_list.append(output_i_j)
-    #         output_ctx_dict[flow_i_name] = output_i_list
-    #
-    #     task = {
-    #         "name": name_str,
-    #         "flow": flow_list,
-    #         "model_ctx": model_ctx_dict,
-    #         "input_ctx": input_ctx_dict,
-    #         "output_ctx": output_ctx_dict
-    #     }
-    #     print(task)
-    #
-
+    # hostname = "114.212.81.11"
+    # port = 22
+    # username = 'hx'
+    # password = '123456'
+    # ssh = paramiko.SSHClient()
+    # ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # ssh.connect(hostname, port, username, password)
+    # sftp = ssh.open_sftp()
+    # # stdin, stdout, stderr = ssh.exec_command('ifconfig')
+    # # print(stdout.read().decode())
+    # remotedir = '/home/hx/wzl/test/'
+    # if remotedir[-1] == '/':
+    #     remotedir = remotedir[0:-1]
+    # lastdir = (remotedir.split('/'))[-1]
+    # localdir = 'C:\\WorkSpace\\temptest'
+    # if not os.path.exists(localdir):
+    #     os.mkdir(localdir)
+    # # localdir = localdir + lastdir
+    # localdir = os.path.join(localdir, lastdir)
+    # localdir = os.path.join(localdir, '')
+    # if not os.path.exists(localdir):
+    #     os.mkdir(localdir)
+    # print(localdir)
+    # sftp_get_dir(sftp, remotedir, localdir)
+    # print("Get file from server success!")
+    # ssh.close()
+    a = AppInfo('172.27.150.157', 5004)
+    print(a.get_task_code_path())
 
